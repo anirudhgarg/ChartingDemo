@@ -1,13 +1,73 @@
 ﻿using PLplot;
 using System;
 using System.Reflection;
+using Microsoft.WindowsAzure.Storage.Table;
+using Microsoft.WindowsAzure.Storage;
 
 namespace SineWaves
 {
     internal static class Program
     {
+        public class StartStopVMEntry : TableEntity
+        {
+            public StartStopVMEntry()
+            { }
+
+            public StartStopVMEntry(string skey, string datetime)
+            {
+                this.PartitionKey = skey;
+                this.RowKey = datetime;
+            }
+
+            public string VMName { get; set; }
+
+            public string VMType { get; set; }
+
+            public string VMStartedOrStopped { get; set; }
+        }
+
         private static void Main(string[] args)
-        {          
+        {
+            CloudStorageAccount storageAccount = CloudStorageAccount.Parse("UseDevelopmentStorage=true");
+            CloudTableClient cloudTableClient = storageAccount.CreateCloudTableClient();
+            CloudTable table = cloudTableClient.GetTableReference("StartStopVMs");
+            table.CreateIfNotExistsAsync();
+
+            /*
+
+            for (int i = 0; i < 10; i++)
+            {
+                string partitionKey = "partition";
+                var entry = new StartStopVMEntry(partitionKey, String.Format("{0:d21}{1}{2}", DateTimeOffset.MaxValue.UtcDateTime.Ticks - new DateTimeOffset(DateTime.Now.Subtract(TimeSpan.FromDays(75))).UtcDateTime.Ticks, "-", Guid.NewGuid().ToString()));
+                entry.VMName = i.ToString();
+                entry.VMType = "b";
+                entry.VMStartedOrStopped = "c";
+                table.ExecuteAsync(TableOperation.Insert(entry));
+            }*/
+
+            //Find all entries from now to before 
+
+            var fromTime = new DateTime(2018, 12, 16, 5, 0, 0, DateTimeKind.Utc);
+            var fromTicks = String.Format("{0:d21}", DateTimeOffset.MaxValue.UtcDateTime.Ticks - new DateTimeOffset(fromTime).UtcDateTime.Ticks);
+
+            var toTime = new DateTime(2018, 11, 16, 5, 0, 0, DateTimeKind.Utc);
+            var toTicks = String.Format("{0:d21}", DateTimeOffset.MaxValue.UtcDateTime.Ticks - new DateTimeOffset(fromTime).UtcDateTime.Ticks);
+
+            TableQuery<StartStopVMEntry> rangeQuery = new TableQuery<StartStopVMEntry>().Where(
+    TableQuery.CombineFilters(
+        TableQuery.GenerateFilterCondition("PartitionKey", QueryComparisons.Equal, "partition"),
+        TableOperators.And,
+        TableQuery.GenerateFilterCondition("RowKey", QueryComparisons.LessThan, fromTicks),
+        TableQuery.GenerateFilterCondition("RowKey", QueryComparisons.GreaterThan, toTicks)
+        )
+        );
+            
+            // Loop through the results, displaying information about the entity.
+            foreach (StartStopVMEntry entity in table. .ExecuteQuerySegmentedAsync(rangeQuery))
+            {
+                Console.WriteLine("{0}, {1}\t{2}\t{3}", entity.PartitionKey, entity.RowKey,
+                    entity.Email, entity.PhoneNumber);
+            }
 
             // generate data for plotting
             const double sineFactor = 0.012585;
