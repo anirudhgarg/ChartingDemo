@@ -13,9 +13,9 @@ namespace SineWaves
             public StartStopVMEntry()
             { }
 
-            public StartStopVMEntry(string skey, string datetime)
+            public StartStopVMEntry(string pkey, string datetime)
             {
-                this.PartitionKey = skey;
+                this.PartitionKey = pkey;
                 this.RowKey = datetime;
             }
 
@@ -36,9 +36,9 @@ namespace SineWaves
             await table.CreateIfNotExistsAsync();
 
             /*
-            for (int i = 0; i < 60; i++)
+            for (int i = 0; i < 12; i++)
             {
-                DateTime x = DateTime.Now.Subtract(TimeSpan.FromDays(i));
+                DateTime x = DateTime.Now.Subtract(TimeSpan.FromHours(i*6));
                 string partitionKey = "partition";
                 var entry = new StartStopVMEntry(partitionKey, String.Format("{0:d21}{1}{2}", DateTimeOffset.MaxValue.UtcDateTime.Ticks - new DateTimeOffset(x).UtcDateTime.Ticks, "-", Guid.NewGuid().ToString()));
                 entry.VMName = "vm";
@@ -90,7 +90,7 @@ namespace SineWaves
                 // Write out the properties for each entity returned.
                 foreach (StartStopVMEntry entity in segment)
                 {
-                    Console.WriteLine("\t Customer: {0},{1},{2}", entity.PartitionKey, entity.RowKey, entity.VMdatetime.ToShortDateString());
+                    Console.WriteLine("\t Customer: {0},{1},{2},{3}", entity.PartitionKey, entity.RowKey, entity.VMdatetime.ToShortDateString(), entity.Timestamp);
                 }
 
                 Console.WriteLine();
