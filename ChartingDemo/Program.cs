@@ -24,50 +24,84 @@ namespace SineWaves
             public string VMType { get; set; }
 
             public string VMStartedOrStopped { get; set; }
+
+            public DateTime VMdatetime { get; set; }
         }
 
-        private static void Main(string[] args)
+        public async static void Storage()
         {
             CloudStorageAccount storageAccount = CloudStorageAccount.Parse("UseDevelopmentStorage=true");
             CloudTableClient cloudTableClient = storageAccount.CreateCloudTableClient();
             CloudTable table = cloudTableClient.GetTableReference("StartStopVMs");
-            table.CreateIfNotExistsAsync();
+            await table.CreateIfNotExistsAsync();
 
             /*
-
-            for (int i = 0; i < 10; i++)
+            for (int i = 0; i < 60; i++)
             {
+                DateTime x = DateTime.Now.Subtract(TimeSpan.FromDays(i));
                 string partitionKey = "partition";
-                var entry = new StartStopVMEntry(partitionKey, String.Format("{0:d21}{1}{2}", DateTimeOffset.MaxValue.UtcDateTime.Ticks - new DateTimeOffset(DateTime.Now.Subtract(TimeSpan.FromDays(75))).UtcDateTime.Ticks, "-", Guid.NewGuid().ToString()));
-                entry.VMName = i.ToString();
+                var entry = new StartStopVMEntry(partitionKey, String.Format("{0:d21}{1}{2}", DateTimeOffset.MaxValue.UtcDateTime.Ticks - new DateTimeOffset(x).UtcDateTime.Ticks, "-", Guid.NewGuid().ToString()));
+                entry.VMName = "vm";
                 entry.VMType = "b";
                 entry.VMStartedOrStopped = "c";
-                table.ExecuteAsync(TableOperation.Insert(entry));
-            }*/
+                entry.VMdatetime = x;
+                await table.ExecuteAsync(TableOperation.Insert(entry));
+            }
+            */
 
             //Find all entries from now to before 
 
-            var fromTime = new DateTime(2018, 12, 16, 5, 0, 0, DateTimeKind.Utc);
+            var fromTime = DateTime.UtcNow;
             var fromTicks = String.Format("{0:d21}", DateTimeOffset.MaxValue.UtcDateTime.Ticks - new DateTimeOffset(fromTime).UtcDateTime.Ticks);
 
-            var toTime = new DateTime(2018, 11, 16, 5, 0, 0, DateTimeKind.Utc);
-            var toTicks = String.Format("{0:d21}", DateTimeOffset.MaxValue.UtcDateTime.Ticks - new DateTimeOffset(fromTime).UtcDateTime.Ticks);
+            var toTime = DateTime.UtcNow.Subtract(TimeSpan.FromDays(30));
+            var toTicks = String.Format("{0:d21}", DateTimeOffset.MaxValue.UtcDateTime.Ticks - new DateTimeOffset(toTime).UtcDateTime.Ticks);
 
-            TableQuery<StartStopVMEntry> rangeQuery = new TableQuery<StartStopVMEntry>().Where(
-    TableQuery.CombineFilters(
-        TableQuery.GenerateFilterCondition("PartitionKey", QueryComparisons.Equal, "partition"),
-        TableOperators.And,
-        TableQuery.GenerateFilterCondition("RowKey", QueryComparisons.LessThan, fromTicks),
-        TableQuery.GenerateFilterCondition("RowKey", QueryComparisons.GreaterThan, toTicks)
-        )
-        );
-            
-            // Loop through the results, displaying information about the entity.
-            foreach (StartStopVMEntry entity in table. .ExecuteQuerySegmentedAsync(rangeQuery))
+            string pkFilter = TableQuery.GenerateFilterCondition("PartitionKey", QueryComparisons.Equal, "partition");
+            string rkLowerFilter = TableQuery.GenerateFilterCondition("RowKey", QueryComparisons.GreaterThanOrEqual, fromTicks);
+            string rkUpperFilter = TableQuery.GenerateFilterCondition("RowKey", QueryComparisons.LessThan, toTicks);
+
+            // Note CombineFilters has the effect of “([Expression1]) Operator (Expression2]), as such passing in a complex expression will result in a logical grouping. 
+            string combinedRowKeyFilter = TableQuery.CombineFilters(rkLowerFilter, TableOperators.And, rkUpperFilter);
+            string combinedFilter = TableQuery.CombineFilters(pkFilter, TableOperators.And, combinedRowKeyFilter);
+            TableQuery<StartStopVMEntry> query = new TableQuery<StartStopVMEntry>().Where(combinedFilter);
+
+            TableContinuationToken token = null;
+            query.TakeCount = 50;
+            int segmentNumber = 0;
+            do
             {
-                Console.WriteLine("{0}, {1}\t{2}\t{3}", entity.PartitionKey, entity.RowKey,
-                    entity.Email, entity.PhoneNumber);
+                // Execute the query, passing in the continuation token.
+                // The first time this method is called, the continuation token is null. If there are more results, the call
+                // populates the continuation token for use in the next call.
+                TableQuerySegment<StartStopVMEntry> segment = await table.ExecuteQuerySegmentedAsync(query, token);
+
+                // Indicate which segment is being displayed
+                if (segment.Results.Count > 0)
+                {
+                    segmentNumber++;
+                    Console.WriteLine();
+                    Console.WriteLine("Segment {0}", segmentNumber);
+                }
+
+                // Save the continuation token for the next call to ExecuteQuerySegmentedAsync
+                token = segment.ContinuationToken;
+
+                // Write out the properties for each entity returned.
+                foreach (StartStopVMEntry entity in segment)
+                {
+                    Console.WriteLine("\t Customer: {0},{1},{2}", entity.PartitionKey, entity.RowKey, entity.VMdatetime.ToShortDateString());
+                }
+
+                Console.WriteLine();
             }
+            while (token != null);
+        }
+
+        public static void Main(string[] args)
+        {
+            Storage();
+
 
             // generate data for plotting
             const double sineFactor = 0.012585;
